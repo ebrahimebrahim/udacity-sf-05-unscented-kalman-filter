@@ -15,16 +15,17 @@ UKF::UKF() {
   use_radar_ = true;
 
   // initial state vector
-  x_ = VectorXd(5);
+  n_x_=5;
+  x_ = VectorXd(n_x_);
 
   // initial covariance matrix
-  P_ = MatrixXd(5, 5);
+  P_ = MatrixXd(n_x_, n_x_);
 
   // Process noise standard deviation longitudinal acceleration in m/s^2
-  std_a_ = 30;
+  std_a_ = 6;
 
   // Process noise standard deviation yaw acceleration in rad/s^2
-  std_yawdd_ = 30;
+  std_yawdd_ = M_PI;
   
   /**
    * DO NOT MODIFY measurement noise values below.
@@ -54,6 +55,11 @@ UKF::UKF() {
    * TODO: Complete the initialization. See ukf.h for other member properties.
    * Hint: one or more values initialized above might be wildly off...
    */
+  n_aug_ = n_x_+2;
+  lambda_ = 3-n_x_;
+  weights_ = VectorXd(2*n_aug_+1);
+  weights_.fill(1/(2*(lambda_+n_aug_)));
+  weights_(0)=lambda_/(lambda_+n_aug_);
 }
 
 UKF::~UKF() {}

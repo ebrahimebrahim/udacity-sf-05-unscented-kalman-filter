@@ -140,7 +140,7 @@ static Matrix<double, 5, 1> f(Matrix<double, 7, 1> xsig_aug, double dt){
              (v/psidot)*(sin(psi+psidot*dt)-sin(psi)) + 0.5*dt*dt*cos(psi)*nu_a,// px
              (v/psidot)*(-cos(psi+psidot*dt)+cos(psi)) + 0.5*dt*dt*sin(psi)*nu_a,// py
              0+dt*nu_a,// v
-             psidot*dt+0.5*dt*dt*nu_psidd,// psi
+             psidot*dt+0.5*dt*dt*nu_psidd,// psi TODO: force into (-pi, pi) range
              0+dt*nu_psidd// psidot
         ;
     }
@@ -149,7 +149,7 @@ static Matrix<double, 5, 1> f(Matrix<double, 7, 1> xsig_aug, double dt){
              v*cos(psi*dt) + 0.5*dt*dt*cos(psi)*nu_a,// px
              v*sin(psi*dt) + 0.5*dt*dt*sin(psi)*nu_a,// py
              0+dt*nu_a,// v
-             psidot*dt+0.5*dt*dt*nu_psidd,// psi
+             psidot*dt+0.5*dt*dt*nu_psidd,// psi TODO: force into (-pi, pi) range
              0+dt*nu_psidd// psidot
         ;
     }
@@ -212,6 +212,19 @@ void UKF::Prediction(double delta_t) {
   
 }
 
+// This function is the lidar measurement model, mapping from internal states into radar meas. space
+static Matrix<double, 2, 1> h_lidar(Matrix<double, 5, 1> x){
+    const double px=x(0);
+    const double py=x(1);
+    const double v=x(2);
+    const double psi=x(3);
+    const double psidot=x(4);
+    
+    Matrix<double, 2, 1> z;
+    z << px,py;
+    return z;
+}
+
 void UKF::UpdateLidar(MeasurementPackage meas_package) {
   /**
    * TODO: Complete this function! Use lidar data to update the belief 
@@ -219,6 +232,73 @@ void UKF::UpdateLidar(MeasurementPackage meas_package) {
    * covariance, P_.
    * You can also calculate the lidar NIS, if desired.
    */
+
+  int n_z = 2;
+
+  // This vector consists of the actual measured p_x, p_y
+  VectorXd z = meas_package.raw_measurements_;
+
+  // The columns of this matrix will be the images of our sigma points in the lidar measurement space
+  MatrixXd Zsig = MatrixXd(n_z, 2 * n_aug_ + 1);
+
+  // z_pred and S represent the gaussian distribution of our beief, expressed in lidar measurement terms
+  VectorXd z_pred = VectorXd(n_z);
+  MatrixXd S = MatrixXd(n_z,n_z);
+
+  // Map sigma points over to lidar measurement space
+  for (int i = 0; i< 2*n_aug_+1; ++i)
+      Zsig.col(i) = h_lidar(Xsig_pred_.col(i));
+
+  // Compute z_pred and S from Zsig
+
+  z_pred.fill(0.0);
+  for (int i=0; i<2*n_aug_+1; ++i) 
+      z_pred += weights_(i) * Zsig.col(i);
+  
+  S.fill(0.0);
+  for (int i=0; i<2*n_aug_+1; ++i) {
+      VectorXd diff = Zsig.col(i) - z_pred;
+      S += weights_(i) * diff * diff.transpose();
+  }
+  // Incorporate lidar measurement uncertainty into S
+  S(0,0) += std_laspx_ * std_laspx_;
+  S(1,1) += std_laspy_ * std_laspy_;
+
+  // Compute cross-correlation matrix and Kalman gain
+
+  MatrixXd Tc = MatrixXd(n_x_, n_z);
+  Tc.fill(0.0);
+  for (int i=0; i<2*n_aug_+1; ++i) {
+      VectorXd xdiff = Xsig_pred_.col(i) - x_;
+      VectorXd zdiff = Zsig.col(i) - z_pred;
+      Tc += weights_(i) * xdiff * zdiff.transpose(); 
+  }
+
+  MatrixXd K = Tc * S.inverse();
+
+  // Update state mean and covariance matrix
+
+  x_ = x_ + K*(z - z_pred);
+  P_ = P_ - K * S * K.transpose();
+
+
+}
+
+// This function is the radar measurement model, mapping from internal states into radar meas. space
+static Matrix<double, 3, 1> h_radar(Matrix<double, 5, 1> x){
+    const double px=x(0);
+    const double py=x(1);
+    const double v=x(2);
+    const double psi=x(3);
+    const double psidot=x(4);
+    
+    const double rho=sqrt(px*px+py*py);
+    const double phi=atan2(py,px);
+    const double rhodot=(px*cos(psi)*v + py*sin(psi)*v)/rho;
+    
+    Matrix<double, 3, 1> z;
+    z << rho,phi,rhodot;
+    return z;
 }
 
 void UKF::UpdateRadar(MeasurementPackage meas_package) {
@@ -228,4 +308,54 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
    * covariance, P_.
    * You can also calculate the radar NIS, if desired.
    */
+
+  int n_z = 3;
+
+  // This vector consists of the actual measured rho, phi, rhodot
+  VectorXd z = meas_package.raw_measurements_;
+
+  // The columns of this matrix will be the images of our sigma points in the radar measurement space
+  MatrixXd Zsig = MatrixXd(n_z, 2 * n_aug_ + 1);
+
+  // z_pred and S represent the gaussian distribution of our beief, expressed in radar measurement terms
+  VectorXd z_pred = VectorXd(n_z);
+  MatrixXd S = MatrixXd(n_z,n_z);
+
+  // Map sigma points over to radar measurement space
+  for (int i = 0; i< 2*n_aug_+1; ++i)
+      Zsig.col(i) = h_radar(Xsig_pred_.col(i));
+
+  // Compute z_pred and S from Zsig
+
+  z_pred.fill(0.0);
+  for (int i=0; i<2*n_aug_+1; ++i) 
+      z_pred += weights_(i) * Zsig.col(i);
+  
+  S.fill(0.0);
+  for (int i=0; i<2*n_aug_+1; ++i) {
+      VectorXd diff = Zsig.col(i) - z_pred;
+      S += weights_(i) * diff * diff.transpose();
+  }
+  // Incorporate radar measurement uncertainty into S
+  S(0,0) += std_radr_*std_radr_;
+  S(1,1) += std_radphi_*std_radphi_;
+  S(2,2) += std_radrd_*std_radrd_;
+
+  // Compute cross-correlation matrix and Kalman gain
+
+  MatrixXd Tc = MatrixXd(n_x_, n_z);
+  Tc.fill(0.0);
+  for (int i=0; i<2*n_aug_+1; ++i) {
+      VectorXd xdiff = Xsig_pred_.col(i) - x_;
+      VectorXd zdiff = Zsig.col(i) - z_pred;
+      Tc += weights_(i) * xdiff * zdiff.transpose(); 
+  }
+
+  MatrixXd K = Tc * S.inverse();
+
+  // Update state mean and covariance matrix
+
+  x_ = x_ + K*(z - z_pred);
+  P_ = P_ - K * S * K.transpose();
+
 }

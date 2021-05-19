@@ -56,11 +56,16 @@ UKF::UKF() {
    * TODO: Complete the initialization. See ukf.h for other member properties.
    * Hint: one or more values initialized above might be wildly off...
    */
+  
   n_aug_ = n_x_+2;
   lambda_ = 3-n_x_;
+
   weights_ = VectorXd(2*n_aug_+1);
   weights_.fill(1/(2*(lambda_+n_aug_)));
   weights_(0)=lambda_/(lambda_+n_aug_);
+  
+  Xsig_pred_ = MatrixXd(n_x_, 2*n_aug_+1);
+
   is_initialized_ = false;
 }
 
@@ -119,12 +124,79 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
 
 }
 
+// This function f is the process model
+static Matrix<double, 5, 1> f(Matrix<double, 7, 1> xsig_aug, double dt){
+
+    const double px=xsig_aug(0);
+    const double py=xsig_aug(1);
+    const double v=xsig_aug(2);
+    const double psi=xsig_aug(3);
+    const double psidot=xsig_aug(4);
+    const double nu_a=xsig_aug(5);
+    const double nu_psidd=xsig_aug(6);
+    Matrix<double, 5, 1> step;
+    if (dt!=0.0){
+        step << 
+             (v/psidot)*(sin(psi+psidot*dt)-sin(psi)) + 0.5*dt*dt*cos(psi)*nu_a,// px
+             (v/psidot)*(-cos(psi+psidot*dt)+cos(psi)) + 0.5*dt*dt*sin(psi)*nu_a,// py
+             0+dt*nu_a,// v
+             psidot*dt+0.5*dt*dt*nu_psidd,// psi
+             0+dt*nu_psidd// psidot
+        ;
+    }
+    else {
+        step << 
+             v*cos(psi*dt) + 0.5*dt*dt*cos(psi)*nu_a,// px
+             v*sin(psi*dt) + 0.5*dt*dt*sin(psi)*nu_a,// py
+             0+dt*nu_a,// v
+             psidot*dt+0.5*dt*dt*nu_psidd,// psi
+             0+dt*nu_psidd// psidot
+        ;
+    }
+    return xsig_aug.head(5) + step;
+}
+
+
 void UKF::Prediction(double delta_t) {
   /**
    * TODO: Complete this function! Estimate the object's location. 
    * Modify the state vector, x_. Predict sigma points, the state, 
    * and the state covariance matrix.
    */
+
+  int n_extra = n_aug_ - n_x_;
+
+  // Augment x and P to get x_aug and P_aug
+
+  VectorXd x_aug = VectorXd(n_aug_);
+  x_aug.head(n_x_)= x_;
+  x_aug.tail(n_extra) << 0,0 ;
+
+  MatrixXd P_aug = MatrixXd(n_aug_, n_aug_);
+  P_aug.fill(0.0);
+  P_aug.block(0,0,n_x_,n_x_) = P_;
+  P_aug.block(n_x_,n_x_,n_extra,n_extra) << std_a_*std_a_ , 0.0 ,
+                                            0.0 , std_yawdd_*std_yawdd_;
+
+  // Compute sigma points for x_aug and P_aug
+
+  MatrixXd sqrt_of_covariance = P_aug.llt().matrixL();
+  MatrixXd pm_mat = sqrt(lambda_+n_aug_) * sqrt_of_covariance; // we shall add and subtract his matrix
+  
+  MatrixXd Xsig_aug = MatrixXd(n_aug_, 2 * n_aug_ + 1); // Columns of this matrix are the sigma pts
+  Xsig_aug.col(0)=x_aug;
+  
+  for (int i = 0; i<n_aug_; ++i) {
+      Xsig_aug.col(i+1) =     x_aug + pm_mat.col(i);
+      Xsig_aug.col(n_aug_+i+1) = x_aug - pm_mat.col(i);
+  }
+
+  // Send sigma points through process model
+  
+  for (int i = 0; i<2*n_aug_+1; ++i){
+      Xsig_pred_.col(i) = f(Xsig_aug.col(i), delta_t);
+  }
+  
 }
 
 void UKF::UpdateLidar(MeasurementPackage meas_package) {

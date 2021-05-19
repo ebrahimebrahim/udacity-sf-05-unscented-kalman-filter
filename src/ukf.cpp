@@ -3,6 +3,7 @@
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
+using Eigen::Matrix;
 
 /**
  * Initializes Unscented Kalman filter
@@ -60,6 +61,7 @@ UKF::UKF() {
   weights_ = VectorXd(2*n_aug_+1);
   weights_.fill(1/(2*(lambda_+n_aug_)));
   weights_(0)=lambda_/(lambda_+n_aug_);
+  is_initialized_ = false;
 }
 
 UKF::~UKF() {}
@@ -69,6 +71,42 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
    * TODO: Complete this function! Make sure you switch between lidar and radar
    * measurements.
    */
+  if (!is_initialized_){
+    if (meas_package.sensor_type_==MeasurementPackage::LASER){
+      const double px = meas_package.raw_measurements_(0);
+      const double py = meas_package.raw_measurements_(1);
+      x_ << px, py, 0, 0, 0; // Assume 0 for initial v, psi, psidot, with very high uncertainty
+      P_ << std_laspx_ * std_laspx_, 0, 0, 0, 0,
+            0, std_laspy_ * std_laspy_, 0, 0, 0,
+            0, 0, 50, 0, 0,
+            0, 0, 0, 2*M_PI, 0,
+            0, 0, 0, 0, M_PI;
+    }
+    else if (meas_package.sensor_type_==MeasurementPackage::RADAR) {
+      const double rho = meas_package.raw_measurements_(0);
+      const double phi = meas_package.raw_measurements_(1);
+      const double rhodot = meas_package.raw_measurements_(2);
+      const double px = rho*cos(phi);
+      const double py = rho*sin(phi);
+      x_ << px, py,
+            rhodot, // Assume that there's zero tangential velocity initially, with high uncertainty
+            0, 0; // Assume 0 for initial psi, psidot, with very high uncertainty
+
+      // Using some taylor expansions we can translate radar position uncertainties into px,py terms
+      double std_px = std_radr_ * abs(cos(phi)) + abs(py)*std_radphi_ + abs(sin(phi))*std_radr_*std_radphi_;
+      double std_py = std_radr_ * abs(sin(phi)) + abs(px)*std_radphi_ + abs(cos(phi))*std_radr_*std_radphi_;
+      
+      // There might be correlation between px and py belief, but let's pretend there isn't initially.
+
+      P_ << std_px * std_px, 0, 0, 0, 0,
+            0, std_py * std_py, 0, 0, 0,
+            0, 0, 50, 0, 0,
+            0, 0, 0, 2*M_PI, 0,
+            0, 0, 0, 0, M_PI;
+    }
+    is_initialized_ = true;
+    return;
+  }
 }
 
 void UKF::Prediction(double delta_t) {

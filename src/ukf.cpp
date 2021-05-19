@@ -196,6 +196,19 @@ void UKF::Prediction(double delta_t) {
   for (int i = 0; i<2*n_aug_+1; ++i){
       Xsig_pred_.col(i) = f(Xsig_aug.col(i), delta_t);
   }
+
+  // Predict new x and P by combining processed sigma points
+
+  x_.fill(0.0);
+  for (int i=0; i<2*n_aug_+1; ++i){
+      x_ += weights_(i) * Xsig_pred_.col(i);
+  }
+
+  P_.fill(0.0);
+  for (int i=0; i<2*n_aug_+1; ++i){
+      VectorXd diff = Xsig_pred_.col(i) - x_;
+      P_ += weights_(i) * diff * diff.transpose();
+  }
   
 }
 

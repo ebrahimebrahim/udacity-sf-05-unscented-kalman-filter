@@ -79,7 +79,7 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
       P_ << std_laspx_ * std_laspx_, 0, 0, 0, 0,
             0, std_laspy_ * std_laspy_, 0, 0, 0,
             0, 0, 50, 0, 0,
-            0, 0, 0, 2*M_PI, 0,
+            0, 0, 0, 4*M_PI, 0,
             0, 0, 0, 0, M_PI;
     }
     else if (meas_package.sensor_type_==MeasurementPackage::RADAR) {
@@ -101,12 +101,22 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
       P_ << std_px * std_px, 0, 0, 0, 0,
             0, std_py * std_py, 0, 0, 0,
             0, 0, 50, 0, 0,
-            0, 0, 0, 2*M_PI, 0,
+            0, 0, 0, 4*M_PI, 0,
             0, 0, 0, 0, M_PI;
     }
     is_initialized_ = true;
     return;
   }
+
+  Prediction(meas_package.timestamp_ - time_us_);
+
+  if (meas_package.sensor_type_==MeasurementPackage::LASER)
+    UpdateLidar(meas_package);
+  else if (meas_package.sensor_type_==MeasurementPackage::RADAR)
+    UpdateRadar(meas_package);
+  
+  time_us_ = meas_package.timestamp_;
+
 }
 
 void UKF::Prediction(double delta_t) {

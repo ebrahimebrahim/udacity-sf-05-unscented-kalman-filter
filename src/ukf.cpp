@@ -1,5 +1,6 @@
 #include "ukf.h"
 #include "Eigen/Dense"
+#include <iostream>
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
@@ -113,6 +114,11 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
     return;
   }
 
+  if (meas_package.sensor_type_==MeasurementPackage::LASER &&  !use_laser_)
+    return;
+  if (meas_package.sensor_type_==MeasurementPackage::RADAR && !use_radar_)
+    return;
+
   Prediction(meas_package.timestamp_ - time_us_);
 
   if (meas_package.sensor_type_==MeasurementPackage::LASER)
@@ -124,36 +130,45 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
 
 }
 
+// Force an angle into the (-pi, pi] range.
+static double standardize_angle(double angle) {
+  const double revs = (angle+M_PI)/(2*M_PI);
+  const double revs_residual = revs-floor(revs);
+  return (revs_residual * 2 * M_PI)-M_PI;
+}
+
 // This function f is the process model
 static Matrix<double, 5, 1> f(Matrix<double, 7, 1> xsig_aug, double dt){
 
-    const double px=xsig_aug(0);
-    const double py=xsig_aug(1);
-    const double v=xsig_aug(2);
-    const double psi=xsig_aug(3);
-    const double psidot=xsig_aug(4);
-    const double nu_a=xsig_aug(5);
-    const double nu_psidd=xsig_aug(6);
-    Matrix<double, 5, 1> step;
-    if (dt!=0.0){
-        step << 
-             (v/psidot)*(sin(psi+psidot*dt)-sin(psi)) + 0.5*dt*dt*cos(psi)*nu_a,// px
-             (v/psidot)*(-cos(psi+psidot*dt)+cos(psi)) + 0.5*dt*dt*sin(psi)*nu_a,// py
-             0+dt*nu_a,// v
-             psidot*dt+0.5*dt*dt*nu_psidd,// psi TODO: force into (-pi, pi) range
-             0+dt*nu_psidd// psidot
-        ;
-    }
-    else {
-        step << 
-             v*cos(psi*dt) + 0.5*dt*dt*cos(psi)*nu_a,// px
-             v*sin(psi*dt) + 0.5*dt*dt*sin(psi)*nu_a,// py
-             0+dt*nu_a,// v
-             psidot*dt+0.5*dt*dt*nu_psidd,// psi TODO: force into (-pi, pi) range
-             0+dt*nu_psidd// psidot
-        ;
-    }
-    return xsig_aug.head(5) + step;
+  const double px=xsig_aug(0);
+  const double py=xsig_aug(1);
+  const double v=xsig_aug(2);
+  const double psi=xsig_aug(3);
+  const double psidot=xsig_aug(4);
+  const double nu_a=xsig_aug(5);
+  const double nu_psidd=xsig_aug(6);
+  Matrix<double, 5, 1> step;
+  if (abs(psidot)>0.0001){
+      step << 
+            (v/psidot)*(sin(psi+psidot*dt)-sin(psi)) + 0.5*dt*dt*cos(psi)*nu_a,// px
+            (v/psidot)*(-cos(psi+psidot*dt)+cos(psi)) + 0.5*dt*dt*sin(psi)*nu_a,// py
+            0+dt*nu_a,// v
+            psidot*dt+0.5*dt*dt*nu_psidd,// psi
+            0+dt*nu_psidd// psidot
+      ;
+  }
+  else {
+      step << 
+            v*cos(psi*dt) + 0.5*dt*dt*cos(psi)*nu_a,// px
+            v*sin(psi*dt) + 0.5*dt*dt*sin(psi)*nu_a,// py
+            0+dt*nu_a,// v
+            psidot*dt+0.5*dt*dt*nu_psidd,// psi
+            0+dt*nu_psidd// psidot
+      ;
+  }
+  Matrix<double, 5, 1> x_out = xsig_aug.head(5) + step;
+  x_out(3) = standardize_angle(x_out(3));
+  return x_out;
 }
 
 
@@ -193,23 +208,22 @@ void UKF::Prediction(double delta_t) {
 
   // Send sigma points through process model
   
-  for (int i = 0; i<2*n_aug_+1; ++i){
+  for (int i = 0; i<2*n_aug_+1; ++i)
       Xsig_pred_.col(i) = f(Xsig_aug.col(i), delta_t);
-  }
-
+  
   // Predict new x and P by combining processed sigma points
 
   x_.fill(0.0);
   for (int i=0; i<2*n_aug_+1; ++i){
       x_ += weights_(i) * Xsig_pred_.col(i);
   }
+  x_(3) = standardize_angle(x_(3));
 
   P_.fill(0.0);
   for (int i=0; i<2*n_aug_+1; ++i){
       VectorXd diff = Xsig_pred_.col(i) - x_;
       P_ += weights_(i) * diff * diff.transpose();
   }
-  
 }
 
 // This function is the lidar measurement model, mapping from internal states into radar meas. space
@@ -252,7 +266,7 @@ void UKF::UpdateLidar(MeasurementPackage meas_package) {
   // Compute z_pred and S from Zsig
 
   z_pred.fill(0.0);
-  for (int i=0; i<2*n_aug_+1; ++i) 
+  for (int i=0; i<2*n_aug_+1; ++i)
       z_pred += weights_(i) * Zsig.col(i);
   
   S.fill(0.0);
@@ -279,6 +293,7 @@ void UKF::UpdateLidar(MeasurementPackage meas_package) {
   // Update state mean and covariance matrix
 
   x_ = x_ + K*(z - z_pred);
+  x_(3) = standardize_angle(x_(3));
   P_ = P_ - K * S * K.transpose();
 
 
@@ -356,6 +371,7 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
   // Update state mean and covariance matrix
 
   x_ = x_ + K*(z - z_pred);
+  x_(3) = standardize_angle(x_(3));
   P_ = P_ - K * S * K.transpose();
 
 }

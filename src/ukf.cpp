@@ -160,8 +160,8 @@ static Matrix<double, 5, 1> f(Matrix<double, 7, 1> xsig_aug, double dt){
   }
   else {
       step << 
-            v*cos(psi*dt) + 0.5*dt*dt*cos(psi)*nu_a,// px
-            v*sin(psi*dt) + 0.5*dt*dt*sin(psi)*nu_a,// py
+            v*cos(psi)*dt + 0.5*dt*dt*cos(psi)*nu_a,// px
+            v*sin(psi)*dt + 0.5*dt*dt*sin(psi)*nu_a,// py
             0+dt*nu_a,// v
             psidot*dt+0.5*dt*dt*nu_psidd,// psi
             0+dt*nu_psidd// psidot

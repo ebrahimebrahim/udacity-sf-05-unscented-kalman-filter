@@ -59,7 +59,7 @@ UKF::UKF() {
    */
   
   n_aug_ = n_x_+2;
-  lambda_ = 3-n_x_;
+  lambda_ = 3-n_aug_;
 
   weights_ = VectorXd(2*n_aug_+1);
   weights_.fill(1/(2*(lambda_+n_aug_)));
@@ -196,7 +196,7 @@ void UKF::Prediction(double delta_t) {
   // Compute sigma points for x_aug and P_aug
 
   MatrixXd sqrt_of_covariance = P_aug.llt().matrixL();
-  MatrixXd pm_mat = sqrt(lambda_+n_aug_) * sqrt_of_covariance; // we shall add and subtract his matrix
+  MatrixXd pm_mat = sqrt(lambda_+n_aug_) * sqrt_of_covariance; // we shall add and subtract this matrix
   
   MatrixXd Xsig_aug = MatrixXd(n_aug_, 2 * n_aug_ + 1); // Columns of this matrix are the sigma pts
   Xsig_aug.col(0)=x_aug;

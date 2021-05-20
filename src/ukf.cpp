@@ -119,7 +119,7 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
   if (meas_package.sensor_type_==MeasurementPackage::RADAR && !use_radar_)
     return;
 
-  Prediction(meas_package.timestamp_ - time_us_);
+  Prediction((meas_package.timestamp_ - time_us_)/1e6);
 
   if (meas_package.sensor_type_==MeasurementPackage::LASER)
     UpdateLidar(meas_package);
@@ -171,7 +171,7 @@ static Matrix<double, 5, 1> f(Matrix<double, 7, 1> xsig_aug, double dt){
   return x_out;
 }
 
-
+// Here delta_t is in seconds. Don't forget to convert!
 void UKF::Prediction(double delta_t) {
   /**
    * TODO: Complete this function! Estimate the object's location. 
@@ -222,6 +222,7 @@ void UKF::Prediction(double delta_t) {
   P_.fill(0.0);
   for (int i=0; i<2*n_aug_+1; ++i){
       VectorXd diff = Xsig_pred_.col(i) - x_;
+      diff(3) = standardize_angle(diff(3));
       P_ += weights_(i) * diff * diff.transpose();
   }
 }
@@ -284,6 +285,7 @@ void UKF::UpdateLidar(MeasurementPackage meas_package) {
   Tc.fill(0.0);
   for (int i=0; i<2*n_aug_+1; ++i) {
       VectorXd xdiff = Xsig_pred_.col(i) - x_;
+      xdiff(3) = standardize_angle(xdiff(3));
       VectorXd zdiff = Zsig.col(i) - z_pred;
       Tc += weights_(i) * xdiff * zdiff.transpose(); 
   }
@@ -362,6 +364,7 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
   Tc.fill(0.0);
   for (int i=0; i<2*n_aug_+1; ++i) {
       VectorXd xdiff = Xsig_pred_.col(i) - x_;
+      xdiff(3) = standardize_angle(xdiff(3));
       VectorXd zdiff = Zsig.col(i) - z_pred;
       Tc += weights_(i) * xdiff * zdiff.transpose(); 
   }

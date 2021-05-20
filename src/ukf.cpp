@@ -167,7 +167,6 @@ static Matrix<double, 5, 1> f(Matrix<double, 7, 1> xsig_aug, double dt){
       ;
   }
   Matrix<double, 5, 1> x_out = xsig_aug.head(5) + step;
-  x_out(3) = standardize_angle(x_out(3));
   return x_out;
 }
 
@@ -217,7 +216,6 @@ void UKF::Prediction(double delta_t) {
   for (int i=0; i<2*n_aug_+1; ++i){
       x_ += weights_(i) * Xsig_pred_.col(i);
   }
-  x_(3) = standardize_angle(x_(3));
 
   P_.fill(0.0);
   for (int i=0; i<2*n_aug_+1; ++i){
@@ -295,7 +293,6 @@ void UKF::UpdateLidar(MeasurementPackage meas_package) {
   // Update state mean and covariance matrix
 
   x_ = x_ + K*(z - z_pred);
-  x_(3) = standardize_angle(x_(3));
   P_ = P_ - K * S * K.transpose();
 
 
@@ -351,6 +348,7 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
   S.fill(0.0);
   for (int i=0; i<2*n_aug_+1; ++i) {
       VectorXd diff = Zsig.col(i) - z_pred;
+      diff(1) = standardize_angle(diff(1));
       S += weights_(i) * diff * diff.transpose();
   }
   // Incorporate radar measurement uncertainty into S
@@ -366,6 +364,7 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
       VectorXd xdiff = Xsig_pred_.col(i) - x_;
       xdiff(3) = standardize_angle(xdiff(3));
       VectorXd zdiff = Zsig.col(i) - z_pred;
+      zdiff(1) = standardize_angle(zdiff(1));
       Tc += weights_(i) * xdiff * zdiff.transpose(); 
   }
 
@@ -374,7 +373,6 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
   // Update state mean and covariance matrix
 
   x_ = x_ + K*(z - z_pred);
-  x_(3) = standardize_angle(x_(3));
   P_ = P_ - K * S * K.transpose();
 
 }

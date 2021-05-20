@@ -81,12 +81,12 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
     if (meas_package.sensor_type_==MeasurementPackage::LASER){
       const double px = meas_package.raw_measurements_(0);
       const double py = meas_package.raw_measurements_(1);
-      x_ << px, py, 0, 0, 0; // Assume 0 for initial v, psi, psidot, with very high uncertainty
+      x_ << px, py, 5, 0, 0; // Assume initial v, psi, psidot, with very high uncertainty
       P_ << std_laspx_ * std_laspx_, 0, 0, 0, 0,
             0, std_laspy_ * std_laspy_, 0, 0, 0,
             0, 0, 50, 0, 0,
-            0, 0, 0, 4*M_PI, 0,
-            0, 0, 0, 0, M_PI;
+            0, 0, 0, M_PI*M_PI, 0,
+            0, 0, 0, 0, 0.25 * M_PI * M_PI;
     }
     else if (meas_package.sensor_type_==MeasurementPackage::RADAR) {
       const double rho = meas_package.raw_measurements_(0);
@@ -107,8 +107,8 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
       P_ << std_px * std_px, 0, 0, 0, 0,
             0, std_py * std_py, 0, 0, 0,
             0, 0, 50, 0, 0,
-            0, 0, 0, 4*M_PI, 0,
-            0, 0, 0, 0, M_PI;
+            0, 0, 0, M_PI*M_PI, 0,
+            0, 0, 0, 0, 0.25 * M_PI * M_PI;
     }
     is_initialized_ = true;
     return;
